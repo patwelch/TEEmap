@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Map Application</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"
+          integrity="sha512-gc3xjCmIy673V6MyOAZhIW93xhM9ei1I+gLbmFjUHIjocENRsLX/QUE1htk5q1XV2HyrXQUc୨ME2fxqGJUDrCeg=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100%; } /* Make map fill the viewport */
+        .leaflet-container { background: #f0f0f0; } /* Optional: map background */
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"
+            integrity="sha512-ozq8xQKq6urvuU6jNgkfqAmT7jKN2XumbrX1h+rUT+fPUFXBg3b/GivxAwdmVFCgw6scJ/rEDWAjPEXI2XJOiA=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"
+            integrity="sha512-buyBOMNEWy+On+SGCnHfMRGStUbiUQloERLglWZ/q1KyQN+Tw0QZNdRMGgLHRfQncJ8XG2L5Fbw+B5uaT3zXuw=="
+            crossorigin=""></script>
+
+    <script>
+        // --- 1. Initialize Leaflet Map ---
+        // Center the map (e.g., on the US) and set zoom level
+        const map = L.map('map').setView([39.8283, -98.5795], 4);
+
+        // Add a base tile layer (e.g., OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // --- 2. Layer Groups ---
+        // Group for features drawn by the user
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        // --- 3. ArcGIS REST Layer ---
+        // Example: USA States layer from Esri sample server
+        // Replace URL with your desired ArcGIS REST service endpoint
+        const arcgisLayerUrl = "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2"; // Example: USA States
+        const arcgisLayer = L.esri.featureLayer({
+            url: arcgisLayerUrl,
+            style: function () { // Optional styling
+              return { color: "#007bff", weight: 1, opacity: 0.7 };
+            },
+            // Optional: Add popups showing feature attributes
+            onEachFeature: function (feature, layer) {
+                if (feature.properties) {
+                    let popupContent = "<b>Attributes:</b><br>";
+                    for (const prop in feature.properties) {
+                        popupContent += `${prop}: ${feature.properties[prop]}<br>`;
+                    }
+                    layer.bindPopup(popupContent);
+                }
+            }
+        });
+        // Note: Layer is added via the Layer Control below, not directly here
+
+        // --- 4. Leaflet.Draw Control ---
+        // Configure the drawing tools
+        const drawControl = new L.Control.Draw({
+            edit: {
+                featureGroup: drawnItems, // Allow editing of drawn items
+                remove: true // Allow deleting drawn items
+            },
+            draw: {
+                polygon: true,
+                polyline: true,
+                rectangle: true,
+                circle: true,
+                marker: true,
+                circlemarker: false // Disable circle markers if not needed
+            }
+        });
+        map.addControl(drawControl);
+
+        // Event handler for when a feature is created using the draw tools
+        map.on(L.Draw.Event.CREATED, function (event) {
+            const layer = event.layer;
+            // Add the drawn layer to the 'drawnItems' feature group
+            drawnItems.addLayer(layer);
+
+            // Optional: Add a popup to the drawn feature
+            layer.bindPopup('A drawn shape!');
+
+            // Optional: Log the GeoJSON representation to the console
+            console.log("Drawn Feature GeoJSON:", JSON.stringify(layer.toGeoJSON()));
+        });
+
+        // --- 5. Layer Control ---
+        // Define base maps (only one here, but structure allows more)
+        const baseMaps = {
+            "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png') // Reference, not added again
+        };
+
+        // Define overlay maps (toggleable layers)
+        const overlayMaps = {
+            "Drawn Features": drawnItems, // The group for user-drawn items
+            "ArcGIS Layer (USA States)": arcgisLayer // The layer from ArcGIS REST service
+        };
+
+        // Add the layer control to the map
+        L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map); // baseMaps is null as we added it initially
+
+        // Initially add the ArcGIS layer to the map (it can be toggled off via control)
+        arcgisLayer.addTo(map);
+
+        // --- 6. Feature Copying (Conceptual - Requires More Logic) ---
+        // Feature copying is more complex. A basic approach might involve:
+        // 1. Selecting a feature from an existing layer (e.g., the ArcGIS layer).
+        // 2. Getting its GeoJSON representation.
+        // 3. Creating a new Leaflet layer from that GeoJSON.
+        // 4. Adding the new layer to the 'drawnItems' group.
+        // This would require adding click handlers to the ArcGIS layer, UI elements (like a 'copy' button),
+        // and logic to manage the copying process. This is not implemented in this basic example.
+
+    </script>
+</body>
+</html>
