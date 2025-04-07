@@ -109,6 +109,28 @@
              flex-shrink: 0; /* Prevent button from shrinking */
              padding: 4px 6px; /* Adjust padding */
          }
+
+        /* New styles for complex filter UI */
+        .filter-condition {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .filter-condition select,
+        .filter-condition input {
+            flex-grow: 1;
+        }
+        .filter-condition button {
+            flex-shrink: 0;
+            padding: 4px 6px;
+        }
+        #filter-conditions-container {
+            margin-bottom: 10px;
+        }
+        #filter-logic-select {
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -123,6 +145,7 @@
             <input type="file" id="load-input" accept=".geojson,.json">
         </div>
 
+        <!-- Arc url control group -->    
         <div class="control-group">
              <label for="arcgis-url-input">ArcGIS Layer URL:</label>
              <div class="input-button-group">
@@ -136,6 +159,33 @@
              <button id="load-arcgis-button">Load ArcGIS Layer</button>
              <button id="copy-selected-button" disabled>Copy Selected Feature</button>
         </div>
+
+        <!-- Complex Filter Control Group -->
+        <div class="control-group">
+            <label for="filter-field-select">Filter Field:</label>
+            <select id="filter-field-select" disabled>
+                <option value="">-- Select Field --</option>
+            </select>
+            <div id="filter-conditions-container">
+                <!-- Filter conditions will be added here -->
+            </div>
+            <button id="add-filter-condition-button" disabled>Add Condition</button>
+            <label for="filter-logic-select">Filter Logic:</label>
+            <select id="filter-logic-select" disabled>
+                <option value="AND">AND</option>
+                <option value="OR">OR</option>
+            </select>
+            <button id="apply-filter-button" disabled>Apply Filter</button>
+            <button id="clear-filter-button" disabled>Clear Filter</button>
+        </div>
+
+        <!-- New Color Control Group -->
+        <div class="control-group">
+            <label for="color-picker">Change Layer Color:</label>
+            <input type="color" id="color-picker" value="#E67E22" disabled>
+            <button id="apply-color-button" disabled>Apply Color</button>
+        </div>
+
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -263,12 +313,262 @@
                 const newIndex = savedEndpoints.findIndex(ep => ep.url === urlToAdd);
                 if (newIndex !== -1) { savedEndpointsSelect.value = newIndex; }
             });
+
             // --- End Saved Endpoints Logic ---
 
+            // --- Complex Filter Controls ---
+            const filterFieldSelect = document.getElementById('filter-field-select');
+            const filterConditionsContainer = document.getElementById('filter-conditions-container');
+            const addFilterConditionButton = document.getElementById('add-filter-condition-button');
+            const filterLogicSelect = document.getElementById('filter-logic-select');
+            const applyFilterButton = document.getElementById('apply-filter-button');
+            const clearFilterButton = document.getElementById('clear-filter-button');
+            let currentFilteredLayer = null;
+            let currentFilter = null;
+            let fieldDataTypes = {}; // Store field data types
+
+            // Function to populate filter field dropdown
+            function populateFilterFields(layer) {
+                filterFieldSelect.innerHTML = '<option value="">-- Select Field --</option>';
+                filterFieldSelect.disabled = true;
+                addFilterConditionButton.disabled = true;
+                filterLogicSelect.disabled = true;
+                applyFilterButton.disabled = true;
+                clearFilterButton.disabled = true;
+                fieldDataTypes = {}; // Clear previous data types
+
+                if (!layer || !layer.metadata) {
+                    console.warn("No layer or metadata available to populate filter fields.");
+                    return;
+                }
+
+                layer.metadata(function(error, metadata) {
+                    if (error) {
+                        console.error("Error fetching layer metadata for filter fields:", error);
+                        showMessage("Could not fetch layer metadata for filtering.", 4000);
+                        return;
+                    }
+
+                    if (metadata && metadata.fields) {
+                        metadata.fields.forEach(field => {
+                            if (field.type !== "esriFieldTypeGeometry" && field.type !== "esriFieldTypeOID") {
+                                const option = document.createElement('option');
+                                option.value = field.name;
+                                option.textContent = field.alias || field.name;
+                                filterFieldSelect.appendChild(option);
+                                fieldDataTypes[field.name] = field.type; // Store data type
+                            }
+                        });
+                        filterFieldSelect.disabled = false;
+                        addFilterConditionButton.disabled = false;
+                        filterLogicSelect.disabled = false;
+                    } else {
+                        console.warn("No fields found in layer metadata.");
+                        showMessage("No filterable fields found in layer.", 4000);
+                    }
+                });
+            }
+
+            // Function to add a filter condition
+            function addFilterCondition() {
+                const conditionDiv = document.createElement('div');
+                conditionDiv.classList.add('filter-condition');
+
+                const fieldSelect = document.createElement('select');
+                fieldSelect.classList.add('filter-field-select');
+                const selectedField = filterFieldSelect.value;
+                for (let i = 0; i < filterFieldSelect.options.length; i++) {
+                    const option = document.createElement('option');
+                    option.value = filterFieldSelect.options[i].value;
+                    option.textContent = filterFieldSelect.options[i].textContent;
+                    fieldSelect.appendChild(option);
+                    if (filterFieldSelect.options[i].value === selectedField) {
+                        option.selected = true;
+                    }
+                }
+                conditionDiv.appendChild(fieldSelect);
+
+                const operatorSelect = document.createElement('select');
+                operatorSelect.classList.add('filter-operator-select');
+                const operators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN'];
+                operators.forEach(op => {
+                    const option = document.createElement('option');
+                    option.value = op;
+                    option.textContent = op;
+                    operatorSelect.appendChild(option);
+                });
+                conditionDiv.appendChild(operatorSelect);
+
+                const valueInput = document.createElement('input');
+                valueInput.type = 'text';
+                valueInput.classList.add('filter-value-input');
+                valueInput.placeholder = 'Enter value...';
+                conditionDiv.appendChild(valueInput);
+
+                const removeButton = document.createElement('button');
+                removeButton.textContent = 'X';
+                removeButton.addEventListener('click', () => {
+                    conditionDiv.remove();
+                });
+                conditionDiv.appendChild(removeButton);
+
+                filterConditionsContainer.appendChild(conditionDiv);
+                applyFilterButton.disabled = false;
+            }
+
+            // Function to build the where clause
+            function buildWhereClause() {
+                const conditions = filterConditionsContainer.querySelectorAll('.filter-condition');
+                const logic = filterLogicSelect.value;
+                const whereClauses = [];
+
+                conditions.forEach(condition => {
+                    const field = condition.querySelector('.filter-field-select').value;
+                    const operator = condition.querySelector('.filter-operator-select').value;
+                    let value = condition.querySelector('.filter-value-input').value.trim();
+                    const dataType = fieldDataTypes[field];
+
+                    // Format value based on data type
+                    if (dataType === 'esriFieldTypeString') {
+                        if (operator === 'LIKE' || operator === 'NOT LIKE') {
+                            value = `'\%${value}\%'`; // Add wildcards for LIKE
+                        } else if (operator !== 'IN' && operator !== 'NOT IN') {
+                            value = `'${value}'`; // Add quotes for string
+                        }
+                    } else if (dataType === 'esriFieldTypeDate') {
+                        // Format date value (example: YYYY-MM-DD)
+                        value = `DATE '${value}'`;
+                    } else if (dataType === 'esriFieldTypeInteger' || dataType === 'esriFieldTypeDouble') {
+                        // No quotes for numbers
+                    }
+
+                    // Handle IN/NOT IN
+                    if (operator === 'IN' || operator === 'NOT IN') {
+                        value = `(${value})`; // Wrap in parentheses
+                    }
+
+                    whereClauses.push(`${field} ${operator} ${value}`);
+                });
+
+                if (whereClauses.length === 0) {
+                    return null; // No filter
+                } else if (whereClauses.length === 1) {
+                    return whereClauses[0]; // Single filter
+                } else {
+                    return `(${whereClauses.join(` ${logic} `)})`; // Multiple filters with AND/OR
+                }
+            }
+
+            // Function to apply filter
+            function applyFilter(layer) {
+                const whereClause = buildWhereClause();
+                if (!layer) {
+                    console.warn("No layer to apply filter to.");
+                    return;
+                }
+                if (layer.setWhere) {
+                    layer.setWhere(whereClause);
+                    currentFilter = whereClause;
+                    showMessage(`Filter applied: ${whereClause}`);
+                    clearFilterButton.disabled = false;
+                } else {
+                    console.warn("Layer does not support setWhere.");
+                    showMessage("Layer does not support filtering.", 4000);
+                }
+            }
+
+            // Function to clear filter
+            function clearFilter(layer) {
+                if (!layer) {
+                    console.warn("No layer to clear filter from.");
+                    return;
+                }
+                if (layer.setWhere) {
+                    layer.setWhere(null);
+                    currentFilter = null;
+                    showMessage("Filter cleared.");
+                    clearFilterButton.disabled = true;
+                } else {
+                    console.warn("Layer does not support setWhere.");
+                    showMessage("Layer does not support filtering.", 4000);
+                }
+            }
+
+            // Filter event listeners
+            addFilterConditionButton.addEventListener('click', addFilterCondition);
+
+            applyFilterButton.addEventListener('click', function() {
+                if (currentFilteredLayer) {
+                    applyFilter(currentFilteredLayer);
+                } else {
+                    showMessage("No layer loaded to filter.", 3000);
+                }
+            });
+
+            clearFilterButton.addEventListener('click', function() {
+                if (currentFilteredLayer) {
+                    clearFilter(currentFilteredLayer);
+                }
+            });
 
             // Define styles
             const arcgisLayerStyle = function () { return { color: "#E67E22", weight: 1.5, opacity: 0.8, fillColor: "#E67E22", fillOpacity: 0.1 }; };
             const selectedStyle = { color: "#f0e442", weight: 3, opacity: 1, fillColor: "#f0e442", fillOpacity: 0.3 };
+
+            // --- New Color Controls ---
+            //const colorPicker = document.getElementById('color-picker');
+            //const applyColorButton = document.getElementById('apply-color-button');
+            let currentLayerStyle = {};
+
+            // Function to manage the style of the layer
+            function manageLayerStyle(layer, newColor) {
+                if (!layer) {
+                    console.warn("No layer to apply color to.");
+                    return;
+                }
+                // Define the new style
+                const newStyle = {
+                    color: newColor,
+                    weight: currentLayerStyle.weight || 1.5,
+                    opacity: currentLayerStyle.opacity || 0.8,
+                    fillColor: newColor,
+                    fillOpacity: currentLayerStyle.fillOpacity || 0.1
+                };
+
+                // Apply the new style to the layer
+                layer.setStyle(newStyle);
+
+                // Update the current layer style
+                currentLayerStyle = newStyle;
+            }
+
+            // Function to update the style of the layer in the layer control
+            function updateLayerControlStyle(layer, layerName, newColor) {
+                if (layerControl && layer && layerName) {
+                    // Find the layer in the layer control
+                    const layerControlLayers = layerControl._layers;
+                    for (const layerId in layerControlLayers) {
+                        const layerControlLayer = layerControlLayers[layerId];
+                        if (layerControlLayer.name === layerName) {
+                            // Update the layer's style in the layer control
+                            layerControlLayer.layer.setStyle({ color: newColor, fillColor: newColor });
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Color event listeners
+            //applyColorButton.addEventListener('click', function() {
+            //    const newColor = colorPicker.value;
+            //    if (currentFilteredLayer) {
+            //       manageLayerStyle(currentFilteredLayer, newColor);
+            //        updateLayerControlStyle(currentFilteredLayer, currentFilteredLayer._layerName, newColor);
+            //        showMessage(`Layer color changed to ${newColor}`);
+            //    } else {
+            //        showMessage("No layer loaded to change color.", 3000);
+            //    }
+            //});
 
             // Function to reset style
             function resetSelectedLayerStyle() {
@@ -316,37 +616,81 @@
                 console.log("DEBUG: Adding new layer instance to map:", newArcgisLayer._leaflet_id);
                 newArcgisLayer.addTo(map);
 
+                // Function to update the layer based on the map's bounds
+                function updateLayerByBounds() {
+                    if (!newArcgisLayer) return;
+                    const bounds = map.getBounds();
+                    const sw = bounds.getSouthWest();
+                    const ne = bounds.getNorthEast();
+                    const bbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
+                    //const spatialFilter = `ST_INTERSECTS(SHAPE, SRID=4326;POLYGON ((${sw.lng} ${sw.lat}, ${sw.lng} ${ne.lat}, ${ne.lng} ${ne.lat}, ${ne.lng} ${sw.lat}, ${sw.lng} ${sw.lat})))`;
+                    //newArcgisLayer.setWhere(spatialFilter);
+                    L.esri.query({url: url}).within(bounds).run(function(error, featureCollection, response){
+                        if(error){
+                            console.error("DEBUG: Error loading ArcGIS layer (query error):", error);
+                            showMessage(`Error loading layer: ${error.message || 'Check URL/Permissions'}`, 5000);
+                        }
+                        else{
+                            newArcgisLayer.clearLayers();
+                            newArcgisLayer.addData(featureCollection);
+                        }
+                    });
+                    console.log("DEBUG: -> Layer filter updated based on map bounds.");
+                }
+
                 // Load/Error Handlers
                 newArcgisLayer.on('load', function() {
-                     console.log("DEBUG: -> 'load' event fired for layer:", newArcgisLayer._leaflet_id);
-                     showMessage("ArcGIS layer loaded successfully.", 3000);
+                    console.log("DEBUG: -> 'load' event fired for layer:", newArcgisLayer._leaflet_id);
+                    showMessage("ArcGIS layer loaded successfully.", 3000);
 
-                     console.log("DEBUG: -> Calling metadata function...");
-                     newArcgisLayer.metadata(function(error, metadata) {
-                         console.log("DEBUG: -> Entered metadata callback.");
-                         let layerName = "User Layer";
-                         if (error) {
-                             console.warn("DEBUG: Could not fetch layer metadata:", error);
-                             try { /* Fallback name logic */
+                    updateLayerByBounds();
+                    // Listen for map view changes
+                    map.on('moveend', updateLayerByBounds);
+                    map.on('zoomend', updateLayerByBounds);
+
+                    console.log("DEBUG: -> Calling metadata function...");
+                    newArcgisLayer.metadata(function(error, metadata) {
+                        console.log("DEBUG: -> Entered metadata callback.");
+                        let layerName = "User Layer";
+                        if (error) {
+                            console.warn("DEBUG: Could not fetch layer metadata:", error);
+                            try { /* Fallback name logic */
                                 const pathParts = new URL(url).pathname.split('/');
                                 const serverTypeIndex = pathParts.findIndex(part => part.toLowerCase() === 'featureserver' || part.toLowerCase() === 'mapserver');
                                 if (serverTypeIndex > 1) { layerName = pathParts[serverTypeIndex - 1] + ` (${pathParts[serverTypeIndex + 1] || 'Service'})`; }
                                 else { layerName = pathParts[pathParts.length - 2] || "Loaded Layer"; }
-                             } catch (urlError) { console.warn("DEBUG: Could not parse URL for fallback name."); }
-                             console.log("DEBUG: -> Using fallback layer name:", layerName);
+                            } catch (urlError) { console.warn("DEBUG: Could not parse URL for fallback name."); }
+                            console.log("DEBUG: -> Using fallback layer name:", layerName);
 
-                         } else if (metadata && metadata.name) {
-                             layerName = metadata.name; console.log("DEBUG: -> Using layer name from metadata:", layerName);
-                         } else {
-                             console.warn("DEBUG: Layer metadata loaded, but name property not found. Using default:", layerName);
-                         }
+                        } else if (metadata && metadata.name) {
+                            layerName = metadata.name; console.log("DEBUG: -> Using layer name from metadata:", layerName);
+                        } else {
+                            console.warn("DEBUG: Layer metadata loaded, but name property not found. Using default:", layerName);
+                        }
 
-                         if (newArcgisLayer._addedToControl) { console.log("DEBUG: -> Layer instance", newArcgisLayer._leaflet_id, "already added to control, skipping duplicate add."); isArcgisLayerLoading = false; return; }
+                        if (newArcgisLayer._addedToControl) { console.log("DEBUG: -> Layer instance", newArcgisLayer._leaflet_id, "already added to control, skipping duplicate add."); isArcgisLayerLoading = false; return; }
 
-                         if (layerControl) {
-                             console.log("DEBUG: -> Adding layer", newArcgisLayer._leaflet_id, "to control with name:", layerName);
-                             layerControl.addOverlay(newArcgisLayer, layerName); newArcgisLayer._addedToControl = true;
-                             console.log("DEBUG: -> Layer added to control and marked.");
+                        if (layerControl) {
+                            console.log("DEBUG: -> Adding layer", newArcgisLayer._leaflet_id, "to control with name:", layerName);
+                            layerControl.addOverlay(newArcgisLayer, layerName); newArcgisLayer._addedToControl = true; currentFilteredLayer = newArcgisLayer; populateFilterFields(newArcgisLayer);
+                            newArcgisLayer._layerName = layerName; // Store the layer name
+                            currentLayerStyle = arcgisLayerStyle(); // Store the current style
+                            const applyColorButton = document.getElementById('apply-color-button'); // Moved here
+                            const colorPicker = document.getElementById('color-picker'); // Moved here
+                            colorPicker.disabled = false;
+                            applyColorButton.disabled = false;
+                            // Color event listeners
+                            applyColorButton.addEventListener('click', function() { // Moved here
+                                const newColor = colorPicker.value;
+                                if (currentFilteredLayer) {
+                                    manageLayerStyle(currentFilteredLayer, newColor);
+                                    updateLayerControlStyle(currentFilteredLayer, currentFilteredLayer._layerName, newColor);
+                                    showMessage(`Layer color changed to ${newColor}`);
+                                } else {
+                                    showMessage("No layer loaded to change color.", 3000);
+                                }
+                            });
+                            console.log("DEBUG: -> Layer added to control and marked.");
                          } else { console.warn("DEBUG: layerControl object not found, cannot add overlay."); }
                          // No longer setting currentArcgisLayer
                          isArcgisLayerLoading = false;
@@ -360,13 +704,16 @@
                      // No longer setting currentArcgisLayer
                      isArcgisLayerLoading = false;
                      console.log("DEBUG: -> State updated after request error: isArcgisLayerLoading set to false.");
+                     console.log("DEBUG: -> Error details:", error);
                  });
+
                  newArcgisLayer.on('loaderror', function(error) {
                      console.error("DEBUG: Error loading ArcGIS layer (load error):", error); showMessage(`Error loading layer: ${error.error?.message || 'Check URL/Permissions'}`, 5000);
                      if (map.hasLayer(newArcgisLayer)) { map.removeLayer(newArcgisLayer); }
                      // No longer setting currentArcgisLayer
                      isArcgisLayerLoading = false;
                      console.log("DEBUG: -> State updated after load error: isArcgisLayerLoading set to false.");
+                     console.log("DEBUG: -> Error details:", error);
                  });
             }
 
@@ -397,7 +744,21 @@
 
 
             // --- 5. Leaflet.Draw Control ---
-            const drawControl = new L.Control.Draw({ edit: { featureGroup: drawnItems }, draw: { polygon: true, polyline: true, rectangle: true, circle: true, marker: true, circlemarker: false }});
+            const drawControl = new L.Control.Draw({
+                edit: {
+                    featureGroup: drawnItems,
+                    edit: false, // Disable edit
+                    remove: true // Enable remove
+                },
+                draw: {
+                    polygon: true,
+                    polyline: true,
+                    rectangle: true,
+                    circle: false, // Disable circle
+                    marker: true,
+                    circlemarker: false // Disable circlemarker
+                }
+            });
             map.addControl(drawControl);
 
             // Draw Event Handlers
