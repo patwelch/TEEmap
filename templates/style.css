@@ -1,0 +1,119 @@
+body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100%; } /* Make map fill the viewport */
+        .leaflet-container { background: #f0f0f0; } /* Optional: map background */
+
+        /* Simple message box style */
+        #message-box {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            z-index: 1000; /* Ensure it's above map controls */
+            display: none; /* Hidden by default */
+            font-size: 0.9em;
+        }
+
+        /* Style for the I/O and Layer controls panel */
+        #controls-panel {
+            position: absolute;
+            top: 10px; /* Adjust as needed */
+            right: 10px; /* Adjust as needed */
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 8px;
+            border-radius: 5px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            z-index: 900; /* Below message box, above map */
+            display: flex;
+            flex-direction: column; /* Stack controls vertically */
+            gap: 8px; /* Space between control groups */
+            max-width: 250px; /* Limit width */
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            border-top: 1px solid #eee; /* Separator */
+            padding-top: 8px;
+        }
+        .control-group:first-child {
+             border-top: none; /* No separator for the first group */
+             padding-top: 0;
+        }
+         .control-group label {
+             font-weight: bold;
+             font-size: 0.85em;
+             color: #555;
+             margin-bottom: 2px;
+         }
+        #controls-panel button,
+        #controls-panel .file-label { /* Style label like a button */
+            padding: 5px 10px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+            text-align: center;
+            transition: background-color 0.2s;
+        }
+        #controls-panel button:hover,
+        #controls-panel .file-label:hover {
+            background-color: #f4f4f4;
+        }
+        #controls-panel button:disabled,
+        #controls-panel button:disabled:hover {
+             background-color: #e0e0e0;
+             color: #999;
+             cursor: not-allowed;
+             border-color: #ddd;
+        }
+        #controls-panel input[type="file"] {
+            display: none; /* Hide actual file input */
+        }
+         #controls-panel input[type="text"],
+         #controls-panel select { /* Style text input and select */
+             padding: 4px 6px;
+             border: 1px solid #ccc;
+             border-radius: 3px;
+             font-size: 0.9em;
+             width: 100%; /* Fill available width */
+             box-sizing: border-box; /* Include padding/border in width */
+         }
+        /* Input group for URL and Add button */
+        .input-button-group {
+            display: flex;
+            gap: 3px; /* Small gap between input and button */
+        }
+         .input-button-group input[type="text"] {
+             flex-grow: 1; /* Input takes available space */
+         }
+         .input-button-group button {
+             flex-shrink: 0; /* Prevent button from shrinking */
+             padding: 4px 6px; /* Adjust padding */
+         }
+
+        /* New styles for complex filter UI */
+        .filter-condition {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .filter-condition select,
+        .filter-condition input {
+            flex-grow: 1;
+        }
+        .filter-condition button {
+            flex-shrink: 0;
+            padding: 4px 6px;
+        }
+        #filter-conditions-container {
+            margin-bottom: 10px;
+        }
+        #filter-logic-select {
+            margin-bottom: 10px;
+        }
