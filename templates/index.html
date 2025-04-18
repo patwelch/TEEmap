@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Map Application</title>
 
-    <link rel="stylesheet" href="templates/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           crossorigin=""/>
 
@@ -18,52 +18,69 @@
     <div id="message-box"></div>
 
     <div id="controls-panel">
-        <div class="control-group">
-            <button id="save-button">Save Features</button>
-            <label for="load-input" class="file-label">Load Features</label>
-            <input type="file" id="load-input" accept=".geojson,.json">
-        </div>
+        <fieldset>
+            <legend>Drawing &amp; File I/O</legend>
+            <div class="control-group">
+                <button id="save-button">Save Features</button>
+                <label for="load-input" class="file-label">Load Features</label>
+                <input type="file" id="load-input" accept=".geojson,.json">
+            </div>
+        </fieldset>
 
-        <!-- Arc url control group -->    
-        <div class="control-group">
-             <label for="arcgis-url-input">ArcGIS Layer URL:</label>
-             <div class="input-button-group">
-                 <input type="text" id="arcgis-url-input" placeholder="Enter Feature Service URL...">
-                 <button id="add-endpoint-button" title="Add current URL to Saved Endpoints">+</button>
-             </div>
-             <label for="saved-endpoints-select" style="margin-top: 5px;">Saved Endpoints:</label>
-             <select id="saved-endpoints-select">
-                 <option value="">-- Select Saved Endpoint --</option>
-                 </select>
-             <button id="load-arcgis-button">Load ArcGIS Layer</button>
-             <button id="copy-selected-button" disabled>Copy Selected Feature</button>
-        </div>
+        <!-- Arc url control group -->
+        <fieldset>
+            <legend>ArcGIS Layer</legend> 
+            <div class="control-group">
+                <label for="arcgis-url-input">ArcGIS Layer URL:</label>
+                <div class="input-button-group">
+                    <input type="text" id="arcgis-url-input" placeholder="Enter Feature Service URL...">
+                    <button id="add-endpoint-button" title="Add current URL to Saved Endpoints">+</button>
+                </div>
+                <label for="saved-endpoints-select" style="margin-top: 5px;">Saved Endpoints:</label>
+                <select id="saved-endpoints-select">
+                    <option value="">-- Select Saved Endpoint --</option>
+                    </select>
+                <div class="button-row" style="margin-top: 5px;">
+                    <button id="load-arcgis-button">Load Layer</button>
+                    <button id="remove-arcgis-button" disabled>Remove Layer</button> <!-- New Button -->
+                </div>
+                <div class="button-row" style="margin-top: 5px;">
+                    <button id="copy-selected-button" disabled>Copy Selected Feature</button>
+                </div>
+            </div>
+        </fieldset>
 
         <!-- Complex Filter Control Group -->
-        <div class="control-group">
-            <label for="filter-field-select">Filter Field:</label>
-            <select id="filter-field-select" disabled>
-                <option value="">-- Select Field --</option>
-            </select>
-            <div id="filter-conditions-container">
-                <!-- Filter conditions will be added here -->
+        <fieldset>
+            <legend>Complex Filter</legend>
+            <div class="control-group">
+                <label for="filter-field-select">Filter Field:</label>
+                <select id="filter-field-select" disabled>
+                    <option value="">-- Select Field --</option>
+                </select>
+                <div id="filter-conditions-container">
+                    <!-- Filter conditions will be added here -->
+                </div>
+                <button id="add-filter-condition-button" disabled>Add Condition</button>
+                <label for="filter-logic-select">Filter Logic:</label>
+                <select id="filter-logic-select" disabled>
+                    <option value="AND">AND</option>
+                    <option value="OR">OR</option>
+                </select>
+                <button id="apply-filter-button" disabled>Apply Filter</button>
+                <button id="clear-filter-button" disabled>Clear Filter</button>
             </div>
-            <button id="add-filter-condition-button" disabled>Add Condition</button>
-            <label for="filter-logic-select">Filter Logic:</label>
-            <select id="filter-logic-select" disabled>
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
-            </select>
-            <button id="apply-filter-button" disabled>Apply Filter</button>
-            <button id="clear-filter-button" disabled>Clear Filter</button>
-        </div>
+        </fieldset>
 
         <!-- New Color Control Group -->
-        <div class="control-group">
-            <label for="color-picker">Change Layer Color:</label>
-            <input type="color" id="color-picker" value="#E67E22" disabled>
-            <button id="apply-color-button" disabled>Apply Color</button>
-        </div>
+        <fieldset>
+            <legend>Layer Style</legend>
+            <div class="control-group">
+                <label for="color-picker">Change Layer Color:</label>
+                <input type="color" id="color-picker" value="#E67E22" disabled>
+                <button id="apply-color-button" disabled>Apply Color</button>
+            </div>
+        </fieldset>
 
     </div>
 
@@ -76,607 +93,6 @@
     <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"
             crossorigin=""></script>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-
-            // --- 0. Utility Function for Messages ---
-            const messageBox = document.getElementById('message-box');
-            let messageTimeout;
-            function showMessage(text, duration = 3000) {
-                 messageBox.textContent = text;
-                 messageBox.style.display = 'block';
-                 clearTimeout(messageTimeout);
-                 messageTimeout = setTimeout(() => {
-                     messageBox.style.display = 'none';
-                 }, duration);
-             }
-
-            // --- 1. Initialize Leaflet Map ---
-            const map = L.map('map').setView([39.8283, -98.5795], 4);
-
-            // --- 2. Layer Groups ---
-            const drawnItems = new L.FeatureGroup();
-            map.addLayer(drawnItems);
-
-            // --- 3. Define Basemaps ---
-            const osmStreet = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
-            const esriStreets = L.esri.basemapLayer("Streets");
-            const esriImagery = L.esri.basemapLayer("Imagery");
-            const esriTopographic = L.esri.basemapLayer("Topographic");
-            const baseMaps = { "OpenStreetMap": osmStreet, "Esri Streets": esriStreets, "Esri Imagery": esriImagery, "Esri Topographic": esriTopographic };
-
-            // --- 4. ArcGIS REST Layer & Saved Endpoints Setup ---
-            let layerControl = null;
-            const arcgisUrlInput = document.getElementById('arcgis-url-input');
-            const loadArcgisButton = document.getElementById('load-arcgis-button');
-            const copySelectedButton = document.getElementById('copy-selected-button');
-            const addEndpointButton = document.getElementById('add-endpoint-button');
-            const savedEndpointsSelect = document.getElementById('saved-endpoints-select');
-            let isArcgisLayerLoading = false;
-            let selectedArcgisLayer = null; // Still track the single selected feature's layer
-
-            // --- Saved Endpoints Logic ---
-            const localStorageKey = 'savedArcgisEndpoints';
-            let savedEndpoints = []; // Holds { name: "...", url: "..." } objects
-
-            // *** UPDATED: Ensured default endpoint definitions are present ***
-            const defaultEndpoints = [
-                { name: "USA States (Sample)", url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2" },
-                { name: "World Cities (Sample)", url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/SampleWorldCities/MapServer/0" },
-                { name: "Hurricanes (Sample)", url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/Hurricanes/MapServer/0"}
-            ];
-
-            function loadEndpointsFromStorage() {
-                try {
-                    const stored = localStorage.getItem(localStorageKey);
-                    if (stored) {
-                        savedEndpoints = JSON.parse(stored);
-                        if (!Array.isArray(savedEndpoints)) {
-                            console.warn("Stored endpoints data is not an array, resetting to defaults.");
-                            savedEndpoints = [...defaultEndpoints];
-                            saveEndpointsToStorage();
-                        }
-                    } else {
-                        savedEndpoints = [...defaultEndpoints];
-                        saveEndpointsToStorage();
-                    }
-                } catch (e) {
-                    console.error("Error loading endpoints from localStorage:", e);
-                    savedEndpoints = [...defaultEndpoints];
-                }
-            }
-
-            function saveEndpointsToStorage() {
-                try {
-                    localStorage.setItem(localStorageKey, JSON.stringify(savedEndpoints));
-                } catch (e) {
-                    console.error("Error saving endpoints to localStorage:", e);
-                    showMessage("Could not save endpoint list.", 4000);
-                }
-            }
-
-            function populateEndpointDropdown() {
-                while (savedEndpointsSelect.options.length > 1) { savedEndpointsSelect.remove(1); }
-                console.log("DEBUG: Populating dropdown with", savedEndpoints.length, "endpoints.");
-                savedEndpoints.forEach((endpoint, index) => {
-                    const option = document.createElement('option');
-                    option.value = index;
-                    option.textContent = endpoint.name;
-                    savedEndpointsSelect.appendChild(option);
-                });
-            }
-
-            savedEndpointsSelect.addEventListener('change', function() {
-                const selectedIndex = this.value;
-                if (selectedIndex !== "") {
-                    const selectedUrl = savedEndpoints[parseInt(selectedIndex, 10)].url;
-                    arcgisUrlInput.value = selectedUrl;
-                    console.log(`DEBUG: Selected endpoint '${savedEndpoints[parseInt(selectedIndex, 10)].name}', URL set.`);
-                } else {
-                    arcgisUrlInput.value = "";
-                }
-            });
-
-            addEndpointButton.addEventListener('click', function() {
-                const urlToAdd = arcgisUrlInput.value.trim();
-                if (!urlToAdd) { showMessage("Please enter a URL first.", 3000); return; }
-                const isDuplicate = savedEndpoints.some(endpoint => endpoint.url === urlToAdd);
-                if (isDuplicate) { showMessage("This URL is already in the saved list.", 3000); return; }
-                const nameToAdd = prompt(`Enter a name for this endpoint:\n${urlToAdd}`, "New Endpoint");
-                if (!nameToAdd) { showMessage("Add endpoint cancelled.", 2000); return; }
-                savedEndpoints.push({ name: nameToAdd, url: urlToAdd });
-                savedEndpoints.sort((a, b) => a.name.localeCompare(b.name));
-                saveEndpointsToStorage();
-                populateEndpointDropdown();
-                showMessage(`Endpoint '${nameToAdd}' added successfully.`, 3000);
-                const newIndex = savedEndpoints.findIndex(ep => ep.url === urlToAdd);
-                if (newIndex !== -1) { savedEndpointsSelect.value = newIndex; }
-            });
-
-            // --- End Saved Endpoints Logic ---
-
-            // --- Complex Filter Controls ---
-            const filterFieldSelect = document.getElementById('filter-field-select');
-            const filterConditionsContainer = document.getElementById('filter-conditions-container');
-            const addFilterConditionButton = document.getElementById('add-filter-condition-button');
-            const filterLogicSelect = document.getElementById('filter-logic-select');
-            const applyFilterButton = document.getElementById('apply-filter-button');
-            const clearFilterButton = document.getElementById('clear-filter-button');
-            let currentFilteredLayer = null;
-            let currentFilter = null;
-            let fieldDataTypes = {}; // Store field data types
-
-            // Function to populate filter field dropdown
-            function populateFilterFields(layer) {
-                filterFieldSelect.innerHTML = '<option value="">-- Select Field --</option>';
-                filterFieldSelect.disabled = true;
-                addFilterConditionButton.disabled = true;
-                filterLogicSelect.disabled = true;
-                applyFilterButton.disabled = true;
-                clearFilterButton.disabled = true;
-                fieldDataTypes = {}; // Clear previous data types
-
-                if (!layer || !layer.metadata) {
-                    console.warn("No layer or metadata available to populate filter fields.");
-                    return;
-                }
-
-                layer.metadata(function(error, metadata) {
-                    if (error) {
-                        console.error("Error fetching layer metadata for filter fields:", error);
-                        showMessage("Could not fetch layer metadata for filtering.", 4000);
-                        return;
-                    }
-
-                    if (metadata && metadata.fields) {
-                        metadata.fields.forEach(field => {
-                            if (field.type !== "esriFieldTypeGeometry" && field.type !== "esriFieldTypeOID") {
-                                const option = document.createElement('option');
-                                option.value = field.name;
-                                option.textContent = field.alias || field.name;
-                                filterFieldSelect.appendChild(option);
-                                fieldDataTypes[field.name] = field.type; // Store data type
-                            }
-                        });
-                        filterFieldSelect.disabled = false;
-                        addFilterConditionButton.disabled = false;
-                        filterLogicSelect.disabled = false;
-                    } else {
-                        console.warn("No fields found in layer metadata.");
-                        showMessage("No filterable fields found in layer.", 4000);
-                    }
-                });
-            }
-
-            // Function to add a filter condition
-            function addFilterCondition() {
-                const conditionDiv = document.createElement('div');
-                conditionDiv.classList.add('filter-condition');
-
-                const fieldSelect = document.createElement('select');
-                fieldSelect.classList.add('filter-field-select');
-                const selectedField = filterFieldSelect.value;
-                for (let i = 0; i < filterFieldSelect.options.length; i++) {
-                    const option = document.createElement('option');
-                    option.value = filterFieldSelect.options[i].value;
-                    option.textContent = filterFieldSelect.options[i].textContent;
-                    fieldSelect.appendChild(option);
-                    if (filterFieldSelect.options[i].value === selectedField) {
-                        option.selected = true;
-                    }
-                }
-                conditionDiv.appendChild(fieldSelect);
-
-                const operatorSelect = document.createElement('select');
-                operatorSelect.classList.add('filter-operator-select');
-                const operators = ['=', '!=', '>', '<', '>=', '<=', 'LIKE', 'NOT LIKE', 'IN', 'NOT IN'];
-                operators.forEach(op => {
-                    const option = document.createElement('option');
-                    option.value = op;
-                    option.textContent = op;
-                    operatorSelect.appendChild(option);
-                });
-                conditionDiv.appendChild(operatorSelect);
-
-                const valueInput = document.createElement('input');
-                valueInput.type = 'text';
-                valueInput.classList.add('filter-value-input');
-                valueInput.placeholder = 'Enter value...';
-                conditionDiv.appendChild(valueInput);
-
-                const removeButton = document.createElement('button');
-                removeButton.textContent = 'X';
-                removeButton.addEventListener('click', () => {
-                    conditionDiv.remove();
-                });
-                conditionDiv.appendChild(removeButton);
-
-                filterConditionsContainer.appendChild(conditionDiv);
-                applyFilterButton.disabled = false;
-            }
-
-            // Function to build the where clause
-            function buildWhereClause() {
-                const conditions = filterConditionsContainer.querySelectorAll('.filter-condition');
-                const logic = filterLogicSelect.value;
-                const whereClauses = [];
-
-                conditions.forEach(condition => {
-                    const field = condition.querySelector('.filter-field-select').value;
-                    const operator = condition.querySelector('.filter-operator-select').value;
-                    let value = condition.querySelector('.filter-value-input').value.trim();
-                    const dataType = fieldDataTypes[field];
-
-                    // Format value based on data type
-                    if (dataType === 'esriFieldTypeString') {
-                        if (operator === 'LIKE' || operator === 'NOT LIKE') {
-                            value = `'\%${value}\%'`; // Add wildcards for LIKE
-                        } else if (operator !== 'IN' && operator !== 'NOT IN') {
-                            value = `'${value}'`; // Add quotes for string
-                        }
-                    } else if (dataType === 'esriFieldTypeDate') {
-                        // Format date value (example: YYYY-MM-DD)
-                        value = `DATE '${value}'`;
-                    } else if (dataType === 'esriFieldTypeInteger' || dataType === 'esriFieldTypeDouble') {
-                        // No quotes for numbers
-                    }
-
-                    // Handle IN/NOT IN
-                    if (operator === 'IN' || operator === 'NOT IN') {
-                        value = `(${value})`; // Wrap in parentheses
-                    }
-
-                    whereClauses.push(`${field} ${operator} ${value}`);
-                });
-
-                if (whereClauses.length === 0) {
-                    return null; // No filter
-                } else if (whereClauses.length === 1) {
-                    return whereClauses[0]; // Single filter
-                } else {
-                    return `(${whereClauses.join(` ${logic} `)})`; // Multiple filters with AND/OR
-                }
-            }
-
-            // Function to apply filter
-            function applyFilter(layer) {
-                const whereClause = buildWhereClause();
-                if (!layer) {
-                    console.warn("No layer to apply filter to.");
-                    return;
-                }
-                if (layer.setWhere) {
-                    layer.setWhere(whereClause);
-                    currentFilter = whereClause;
-                    showMessage(`Filter applied: ${whereClause}`);
-                    clearFilterButton.disabled = false;
-                } else {
-                    console.warn("Layer does not support setWhere.");
-                    showMessage("Layer does not support filtering.", 4000);
-                }
-            }
-
-            // Function to clear filter
-            function clearFilter(layer) {
-                if (!layer) {
-                    console.warn("No layer to clear filter from.");
-                    return;
-                }
-                if (layer.setWhere) {
-                    layer.setWhere(null);
-                    currentFilter = null;
-                    showMessage("Filter cleared.");
-                    clearFilterButton.disabled = true;
-                } else {
-                    console.warn("Layer does not support setWhere.");
-                    showMessage("Layer does not support filtering.", 4000);
-                }
-            }
-
-            // Filter event listeners
-            addFilterConditionButton.addEventListener('click', addFilterCondition);
-
-            applyFilterButton.addEventListener('click', function() {
-                if (currentFilteredLayer) {
-                    applyFilter(currentFilteredLayer);
-                } else {
-                    showMessage("No layer loaded to filter.", 3000);
-                }
-            });
-
-            clearFilterButton.addEventListener('click', function() {
-                if (currentFilteredLayer) {
-                    clearFilter(currentFilteredLayer);
-                }
-            });
-
-            // Define styles
-            const arcgisLayerStyle = function () { return { color: "#E67E22", weight: 1.5, opacity: 0.8, fillColor: "#E67E22", fillOpacity: 0.1 }; };
-            const selectedStyle = { color: "#f0e442", weight: 3, opacity: 1, fillColor: "#f0e442", fillOpacity: 0.3 };
-
-            // --- New Color Controls ---
-            //const colorPicker = document.getElementById('color-picker');
-            //const applyColorButton = document.getElementById('apply-color-button');
-            let currentLayerStyle = {};
-
-            // Function to manage the style of the layer
-            function manageLayerStyle(layer, newColor) {
-                if (!layer) {
-                    console.warn("No layer to apply color to.");
-                    return;
-                }
-                // Define the new style
-                const newStyle = {
-                    color: newColor,
-                    weight: currentLayerStyle.weight || 1.5,
-                    opacity: currentLayerStyle.opacity || 0.8,
-                    fillColor: newColor,
-                    fillOpacity: currentLayerStyle.fillOpacity || 0.1
-                };
-
-                // Apply the new style to the layer
-                layer.setStyle(newStyle);
-
-                // Update the current layer style
-                currentLayerStyle = newStyle;
-            }
-
-            // Function to update the style of the layer in the layer control
-            function updateLayerControlStyle(layer, layerName, newColor) {
-                if (layerControl && layer && layerName) {
-                    // Find the layer in the layer control
-                    const layerControlLayers = layerControl._layers;
-                    for (const layerId in layerControlLayers) {
-                        const layerControlLayer = layerControlLayers[layerId];
-                        if (layerControlLayer.name === layerName) {
-                            // Update the layer's style in the layer control
-                            layerControlLayer.layer.setStyle({ color: newColor, fillColor: newColor });
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Color event listeners
-            //applyColorButton.addEventListener('click', function() {
-            //    const newColor = colorPicker.value;
-            //    if (currentFilteredLayer) {
-            //       manageLayerStyle(currentFilteredLayer, newColor);
-            //        updateLayerControlStyle(currentFilteredLayer, currentFilteredLayer._layerName, newColor);
-            //        showMessage(`Layer color changed to ${newColor}`);
-            //    } else {
-            //        showMessage("No layer loaded to change color.", 3000);
-            //    }
-            //});
-
-            // Function to reset style
-            function resetSelectedLayerStyle() {
-                 if (selectedArcgisLayer) {
-                     if (selectedArcgisLayer.resetStyle) { selectedArcgisLayer.resetStyle(); }
-                     else { selectedArcgisLayer.setStyle(arcgisLayerStyle()); }
-                 }
-             }
-
-            // Function to load ArcGIS Feature Layer
-            function loadArcgisFeatureLayer() {
-                console.log("DEBUG: loadArcgisFeatureLayer called");
-
-                if (isArcgisLayerLoading) { showMessage("Layer is already loading...", 1500); console.log("DEBUG: -> Exiting early: Layer already loading."); return; }
-                resetSelectedLayerStyle(); selectedArcgisLayer = null; copySelectedButton.disabled = true;
-
-                const url = arcgisUrlInput.value.trim();
-                if (!url) { showMessage("Please enter or select a URL.", 3000); console.log("DEBUG: -> Exiting early: No URL provided."); return; }
-                 if (!url.toLowerCase().includes('/featureserver') && !url.toLowerCase().includes('/mapserver')) {
-                     showMessage("URL does not look like a valid Feature/Map Server URL.", 4000); console.warn("URL might not be a valid Feature/Map Server URL:", url);
-                 }
-
-                // Additive loading - no removal of previous layers here
-
-                showMessage("Loading ArcGIS layer...", 2000); console.log("DEBUG: -> Starting load for URL:", url); isArcgisLayerLoading = true;
-
-                const newArcgisLayer = L.esri.featureLayer({ url: url, style: arcgisLayerStyle,
-                    onEachFeature: function (feature, layer) {
-                        // Popup
-                        if (feature.properties) { let popupContent = "<b>Attributes:</b><br>"; for (const prop in feature.properties) { popupContent += `${prop}: ${feature.properties[prop]}<br>`; } layer.bindPopup(popupContent); }
-                        // Selection Click Listener
-                        layer.on('click', function(e) {
-                             L.DomEvent.stopPropagation(e);
-                             if (selectedArcgisLayer === layer) {
-                                 console.log("DEBUG: -> Deselecting feature.");
-                                 resetSelectedLayerStyle(); selectedArcgisLayer = null; copySelectedButton.disabled = true; showMessage("Feature deselected.");
-                             } else {
-                                 console.log("DEBUG: -> Selecting feature.");
-                                 resetSelectedLayerStyle(); selectedArcgisLayer = layer; selectedArcgisLayer.setStyle(selectedStyle); copySelectedButton.disabled = false; showMessage("Feature selected. Click 'Copy Selected' button.");
-                             }
-                         });
-                    }
-                });
-
-                console.log("DEBUG: Adding new layer instance to map:", newArcgisLayer._leaflet_id);
-                newArcgisLayer.addTo(map);
-
-                // Function to update the layer based on the map's bounds
-                function updateLayerByBounds() {
-                    if (!newArcgisLayer) return;
-                    const bounds = map.getBounds();
-                    const sw = bounds.getSouthWest();
-                    const ne = bounds.getNorthEast();
-                    const bbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
-                    //const spatialFilter = `ST_INTERSECTS(SHAPE, SRID=4326;POLYGON ((${sw.lng} ${sw.lat}, ${sw.lng} ${ne.lat}, ${ne.lng} ${ne.lat}, ${ne.lng} ${sw.lat}, ${sw.lng} ${sw.lat})))`;
-                    //newArcgisLayer.setWhere(spatialFilter);
-                    L.esri.query({url: url}).within(bounds).run(function(error, featureCollection, response){
-                        if(error){
-                            console.error("DEBUG: Error loading ArcGIS layer (query error):", error);
-                            showMessage(`Error loading layer: ${error.message || 'Check URL/Permissions'}`, 5000);
-                        }
-                        else{
-                            newArcgisLayer.clearLayers();
-                            newArcgisLayer.addData(featureCollection);
-                            if(currentFilteredLayer && colorPicker.value){
-                                manageLayerStyle(currentFilteredLayer, colorPicker.value);
-                            }
-                        }
-                    });
-                    console.log("DEBUG: -> Layer filter updated based on map bounds.");
-                }
-
-                // Load/Error Handlers
-                newArcgisLayer.on('load', function() {
-                    console.log("DEBUG: -> 'load' event fired for layer:", newArcgisLayer._leaflet_id);
-                    showMessage("ArcGIS layer loaded successfully.", 3000);
-
-                    updateLayerByBounds();
-                    // Listen for map view changes
-                    map.on('moveend', updateLayerByBounds);
-                    map.on('zoomend', updateLayerByBounds);
-
-                    console.log("DEBUG: -> Calling metadata function...");
-                    newArcgisLayer.metadata(function(error, metadata) {
-                        console.log("DEBUG: -> Entered metadata callback.");
-                        let layerName = "User Layer";
-                        if (error) {
-                            console.warn("DEBUG: Could not fetch layer metadata:", error);
-                            try { /* Fallback name logic */
-                                const pathParts = new URL(url).pathname.split('/');
-                                const serverTypeIndex = pathParts.findIndex(part => part.toLowerCase() === 'featureserver' || part.toLowerCase() === 'mapserver');
-                                if (serverTypeIndex > 1) { layerName = pathParts[serverTypeIndex - 1] + ` (${pathParts[serverTypeIndex + 1] || 'Service'})`; }
-                                else { layerName = pathParts[pathParts.length - 2] || "Loaded Layer"; }
-                            } catch (urlError) { console.warn("DEBUG: Could not parse URL for fallback name."); }
-                            console.log("DEBUG: -> Using fallback layer name:", layerName);
-
-                        } else if (metadata && metadata.name) {
-                            layerName = metadata.name; console.log("DEBUG: -> Using layer name from metadata:", layerName);
-                        } else {
-                            console.warn("DEBUG: Layer metadata loaded, but name property not found. Using default:", layerName);
-                        }
-
-                        if (newArcgisLayer._addedToControl) { console.log("DEBUG: -> Layer instance", newArcgisLayer._leaflet_id, "already added to control, skipping duplicate add."); isArcgisLayerLoading = false; return; }
-
-                        if (layerControl) {
-                            console.log("DEBUG: -> Adding layer", newArcgisLayer._leaflet_id, "to control with name:", layerName);
-                            layerControl.addOverlay(newArcgisLayer, layerName); newArcgisLayer._addedToControl = true; currentFilteredLayer = newArcgisLayer; populateFilterFields(newArcgisLayer);
-                            newArcgisLayer._layerName = layerName; // Store the layer name
-                            currentLayerStyle = arcgisLayerStyle(); // Store the current style
-                            const applyColorButton = document.getElementById('apply-color-button'); // Moved here
-                            const colorPicker = document.getElementById('color-picker'); // Moved here
-                            colorPicker.disabled = false;                            
-                            applyColorButton.disabled = false;
-                            // Color event listeners
-                            applyColorButton.addEventListener('click', function() { // Moved here
-                                const newColor = colorPicker.value;
-                                if (currentFilteredLayer) {
-                                    manageLayerStyle(currentFilteredLayer, newColor);
-                                    updateLayerControlStyle(currentFilteredLayer, currentFilteredLayer._layerName, newColor);
-                                    showMessage(`Layer color changed to ${newColor}`);
-                                } else {
-                                    showMessage("No layer loaded to change color.", 3000);
-                                }
-                            });
-                            console.log("DEBUG: -> Layer added to control and marked.");
-
-                         } else { console.warn("DEBUG: layerControl object not found, cannot add overlay."); }
-                         // No longer setting currentArcgisLayer
-                         isArcgisLayerLoading = false;
-                         console.log("DEBUG: -> State updated: isArcgisLayerLoading set to false.");
-                     }); // --- End metadata callback ---
-                }); // End on('load') listener
-
-                 newArcgisLayer.on('requesterror', function(error) {
-                     console.error("DEBUG: Error loading ArcGIS layer (request error):", error); showMessage(`Error loading layer: ${error.error?.message1 || 'Check URL/CORS'}`, 5000);
-                     if (map.hasLayer(newArcgisLayer)) { map.removeLayer(newArcgisLayer); }
-                     // No longer setting currentArcgisLayer
-                     isArcgisLayerLoading = false;
-                     console.log("DEBUG: -> State updated after request error: isArcgisLayerLoading set to false.");
-                     console.log("DEBUG: -> Error details:", error);
-                 });
-
-                 newArcgisLayer.on('loaderror', function(error) {
-                     console.error("DEBUG: Error loading ArcGIS layer (load error):", error); showMessage(`Error loading layer: ${error.error?.message || 'Check URL/Permissions'}`, 5000);
-                     if (map.hasLayer(newArcgisLayer)) { map.removeLayer(newArcgisLayer); }
-                     // No longer setting currentArcgisLayer
-                     isArcgisLayerLoading = false;
-                     console.log("DEBUG: -> State updated after load error: isArcgisLayerLoading set to false.");
-                     console.log("DEBUG: -> Error details:", error);
-                 });
-            }
-
-            // Attach listener to Load button
-            loadArcgisButton.addEventListener('click', function() {
-                 console.log("DEBUG: Load ArcGIS Button clicked");
-                 loadArcgisFeatureLayer();
-            });
-
-             // Listener for Copy Selected Button
-             copySelectedButton.addEventListener('click', function() {
-                 console.log("DEBUG: Copy Selected Button clicked");
-                 if (selectedArcgisLayer) {
-                     console.log("DEBUG: -> Copying selected feature.");
-                     const selectedGeoJson = selectedArcgisLayer.toGeoJSON();
-                     const copiedLayer = L.geoJSON(selectedGeoJson, {
-                         style: function() { return { color: "#ff7800", weight: 3, opacity: 0.8, fillColor: "#ff7800", fillOpacity: 0.3 }; },
-                         onEachFeature: function(feature, layer) { layer.bindPopup("Copied Feature"); }
-                     });
-                     drawnItems.addLayer(copiedLayer); resetSelectedLayerStyle();
-                     const nameProp = Object.keys(selectedArcgisLayer.feature.properties).find(p => p.toLowerCase().includes('name') || p.toLowerCase().includes('nom') || p.toLowerCase().includes('title'));
-                     const featureName = nameProp ? selectedArcgisLayer.feature.properties[nameProp] : 'Unknown';
-                     showMessage(`Copied feature: ${featureName}`); selectedArcgisLayer = null; copySelectedButton.disabled = true;
-                 } else {
-                     console.log("DEBUG: -> No feature selected to copy."); showMessage("Please select a feature on the map first.", 3000);
-                 }
-             });
-
-
-            // --- 5. Leaflet.Draw Control ---
-            const drawControl = new L.Control.Draw({
-                edit: {
-                    featureGroup: drawnItems,
-                    edit: false, // Disable edit
-                    remove: true // Enable remove
-                },
-                draw: {
-                    polygon: true,
-                    polyline: true,
-                    rectangle: true,
-                    circle: false, // Disable circle
-                    marker: true,
-                    circlemarker: false // Disable circlemarker
-                }
-            });
-            map.addControl(drawControl);
-
-            // Draw Event Handlers
-            map.on(L.Draw.Event.CREATED, function (event) { /* ... */ });
-            map.on(L.Draw.Event.EDITED, function (event) { /* ... */ });
-            map.on(L.Draw.Event.DELETED, function (event) { /* ... */ });
-
-            // --- 6. Layer Control ---
-            const overlayMaps = { "Drawn & Copied Features": drawnItems };
-            layerControl = L.control.layers(baseMaps, overlayMaps, { collapsed: false, position: 'topleft' }).addTo(map);
-            console.log("DEBUG: Layer control initialized.");
-
-            // --- 8. Save/Export GeoJSON ---
-            const saveButton = document.getElementById('save-button');
-            saveButton.addEventListener('click', function() { /* ... */ });
-
-            // --- 9. Load/Import GeoJSON ---
-            const loadInput = document.getElementById('load-input');
-            loadInput.addEventListener('change', function(event) { /* ... */ });
-
-             // --- 10. Initial Setup ---
-             osmStreet.addTo(map);
-             loadEndpointsFromStorage(); // Load saved/default endpoints
-             populateEndpointDropdown(); // Populate dropdown
-
-             // Pre-fill input with the first endpoint URL (if any) and load it
-             if (savedEndpoints.length > 0) {
-                 arcgisUrlInput.value = savedEndpoints[0].url;
-                 console.log("DEBUG: -> Calling initial loadArcgisFeatureLayer on startup with first saved endpoint.");
-                 loadArcgisFeatureLayer(); // Load the first layer
-             } else {
-                 console.log("DEBUG: -> No saved endpoints found on startup.");
-             }
-
-        }); // --- End of DOMContentLoaded listener ---
-    </script>
+    <script src="{{ url_for('static', filename='js/map_logic.js') }}"></script>
 </body>
 </html>
